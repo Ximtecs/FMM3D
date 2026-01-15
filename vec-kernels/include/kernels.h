@@ -68,6 +68,9 @@ void l3ddirectdp_cpp_(const int32_t* nd, const double* sources, const double* di
 
 void l3ddirectdg_cpp_(const int32_t* nd, const double* sources, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* pot, double* grad, const double* thresh);
 
+void l3ddirectdg_cpp_grad_(const int32_t* nd, const double* sources, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* grad, const double* thresh);
+
+
 void l3ddirectdh_cpp_(const int32_t* nd, const double* sources, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* pot, double* grad, double* hess, const double* thresh);
 
 void l3ddirectcdp_cpp_(const int32_t* nd, const double* sources, const double* charge, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* pot, const double* thresh);

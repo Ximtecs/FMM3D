@@ -136,6 +136,10 @@ void l3ddirectdg_cpp_(const int32_t* nd, const double* sources, const double* di
   l3ddirectdg_vec_cpp<double, VECDIM>(nd, sources, dipvec, ns, ztarg, nt, pot, grad, thresh);
 }
 
+void l3ddirectdg_cpp_grad_(const int32_t* nd, const double* sources, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* grad, const double* thresh){
+  l3ddirectdg_vec_cpp_grad<double, VECDIM>(nd, sources, dipvec, ns, ztarg, nt, grad, thresh);
+}
+
 void l3ddirectdh_cpp_(const int32_t* nd, const double* sources, const double* dipvec, const int32_t* ns, const double* ztarg, const int32_t* nt, double* pot, double* grad, double* hess, const double* thresh){
   l3ddirectdh_vec_cpp<double, VECDIM>(nd, sources, dipvec, ns, ztarg, nt, pot, grad, hess, thresh);
 }

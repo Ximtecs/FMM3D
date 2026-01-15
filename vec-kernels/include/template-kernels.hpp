@@ -2565,6 +2565,109 @@ template <class Real, sctl::Integer MaxVecLen=sctl::DefaultVecLen<Real>()> void 
   }
 }
 
+// dipole,  gradient only
+template <class Real, sctl::Integer MaxVecLen=sctl::DefaultVecLen<Real>()> void l3ddirectdg_vec_cpp_grad(const int32_t* nd, const Real* sources, const Real* dipvec, const int32_t* ns, const Real* ztarg, const int32_t* nt, Real* grad, const Real* thresh) {
+  static constexpr sctl::Integer COORD_DIM = 3;
+
+  sctl::Long nd_ = nd[0];
+  sctl::Long Nsrc = ns[0];
+  sctl::Long Ntrg = nt[0];
+  sctl::Long Ntrg_ = ((Ntrg+MaxVecLen-1)/MaxVecLen)*MaxVecLen;
+
+  //sctl::Matrix<Real> Xs(COORD_DIM, Nsrc);
+  //sctl::Matrix<Real> Vs(nd_, Nsrc);
+  sctl::Matrix<Real> Xt(COORD_DIM, Ntrg_);
+  sctl::Matrix<Real> Gt(nd_*COORD_DIM, Ntrg_);
+  { // Set Xs, Vs, Xt
+    auto transpose = [](sctl::Matrix<Real>& A, const sctl::Matrix<Real>& B) {
+      sctl::Long d0 = std::min(A.Dim(0), B.Dim(1));
+      sctl::Long d1 = std::min(A.Dim(1), B.Dim(0));
+      for (long i = 0; i < d0; i++) {
+        for (long j = 0; j < d1; j++) {
+          A[i][j] = B[j][i];
+        }
+      }
+    };
+    //sctl::Matrix<Real> Xs_(Nsrc, COORD_DIM, sctl::Ptr2Itr<Real>((Real*)sources, COORD_DIM*Nsrc), false);
+    //sctl::Matrix<Real> Vs_(Nsrc, nd_,       sctl::Ptr2Itr<Real>((Real*)charge , nd_*Nsrc),       false);
+    sctl::Matrix<Real> Xt_(Ntrg, COORD_DIM, sctl::Ptr2Itr<Real>((Real*)ztarg  , COORD_DIM*Ntrg), false);
+    //transpose(Xs, Xs_);
+    //transpose(Vs, Vs_);
+    transpose(Xt, Xt_);
+    Gt = 0;
+  }
+
+  static constexpr sctl::Integer VecLen = MaxVecLen;
+  using Vec = sctl::Vec<Real,VecLen>;
+  Vec thresh2 = thresh[0] * thresh[0];
+  // load dipole
+  sctl::Matrix<Real> Gs_(Nsrc, nd_*COORD_DIM,       sctl::Ptr2Itr<Real>((Real*)dipvec , nd_*Nsrc),       false);
+  //Vec Gsrc[Nsrc][nd_][COORD_DIM];
+  sctl::Vector<Vec> Gsrc(Nsrc*nd_*COORD_DIM);
+  for (sctl::Long s = 0; s < Nsrc; s++) {
+    for (long i = 0; i < nd_; i++) {
+      Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+0] = Vec::Load1(&Gs_[s][0*nd_+i]);
+      Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+1] = Vec::Load1(&Gs_[s][1*nd_+i]);
+      Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+2] = Vec::Load1(&Gs_[s][2*nd_+i]);
+    }
+  }
+  // load source
+  sctl::Matrix<Real> Xs_(Nsrc, COORD_DIM, sctl::Ptr2Itr<Real>((Real*)sources, COORD_DIM*Nsrc), false);
+  /*
+  Vec Xss[Nsrc][COORD_DIM];
+  for (sctl::Long s = 0; s < Nsrc; s++) {
+    for (sctl::Integer k = 0; k < COORD_DIM; k++) {
+      Xss[s][k] = Vec::Load1(&Xs_[s][k]);
+    }
+  }
+  */
+  #pragma omp parallel for schedule(static)
+  for (sctl::Long t = 0; t < Ntrg_; t += VecLen) {
+    Vec Xtrg[COORD_DIM];
+    for (sctl::Integer k = 0; k < COORD_DIM; k++) {
+      Xtrg[k] = Vec::LoadAligned(&Xt[k][t]);
+    }
+    // load potential and gradient
+    Vec Gtrg[nd_][COORD_DIM];
+    for (long i = 0; i < nd_; i++) {
+      Gtrg[i][0] = Vec::LoadAligned(&Gt[0*nd_+i][t]);
+      Gtrg[i][1] = Vec::LoadAligned(&Gt[1*nd_+i][t]);
+      Gtrg[i][2] = Vec::LoadAligned(&Gt[2*nd_+i][t]);
+    }
+    for (sctl::Long s = 0; s < Nsrc; s++) {
+      Vec dX[COORD_DIM], R2 = Vec::Zero();
+      for (sctl::Integer k = 0; k < COORD_DIM; k++) {
+        dX[k] = Xtrg[k] - Vec::Load1(&Xs_[s][k]);
+        R2 += dX[k]*dX[k];
+      }
+
+      Vec Rinv = sctl::approx_rsqrt<-1>(R2, (R2 > thresh2));
+
+      Vec Rinv2 = Rinv * Rinv;
+      Vec Rinv3 = Rinv * Rinv2;
+      Vec Rinv5 =  -3.0*Rinv2*Rinv3;
+      for (long i = 0; i < nd_; i++) {
+        Vec Dprod = dX[0]*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+0] + dX[1]*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+1] + dX[2]*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+2];
+        Vec RinvDprod = Rinv5*Dprod;
+        Gtrg[i][0] += RinvDprod*dX[0] + Rinv3*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+0];
+        Gtrg[i][1] += RinvDprod*dX[1] + Rinv3*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+1];
+        Gtrg[i][2] += RinvDprod*dX[2] + Rinv3*Gsrc[s*nd_*COORD_DIM+i*COORD_DIM+2];
+      }
+    }
+    for (long i = 0; i < nd_; i++) {
+      Gtrg[i][0].StoreAligned(&Gt[0*nd_+i][t]);
+      Gtrg[i][1].StoreAligned(&Gt[1*nd_+i][t]);
+      Gtrg[i][2].StoreAligned(&Gt[2*nd_+i][t]);
+    }
+  }
+
+  for (long i = 0; i < Ntrg; i++) {
+    for (long j=0; j < nd_*COORD_DIM; j++) {
+      grad[i*nd_*COORD_DIM+j] += Gt[j][i];
+    }
+  }
+}
+
 
 // dipole, potential, gradient and hessian
 template <class Real, sctl::Integer MaxVecLen=sctl::DefaultVecLen<Real>()> void l3ddirectdh_vec_cpp(const int32_t* nd, const Real* sources, const Real* dipvec, const int32_t* ns, const Real* ztarg, const int32_t* nt, Real* pot, Real* grad, Real* hess, const Real* thresh) {
