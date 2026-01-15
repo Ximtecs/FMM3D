@@ -3,7 +3,6 @@ build
 dist
 res
 docs/_build
-make.inc
 *.so
 *.egg-info
 *.o
