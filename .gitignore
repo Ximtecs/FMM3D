@@ -3,6 +3,7 @@ build
 dist
 res
 docs/_build
+local
 *.so
 *.egg-info
 *.o
