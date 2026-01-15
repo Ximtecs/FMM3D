@@ -10,22 +10,49 @@
 # compiler, and linking from C, fortran
 CC=gcc
 CXX=g++
-FC=gfortran
+FC?=gfortran
 
 
-# set compiler flags for c and fortran
-FFLAGS= -fPIC -O3 -march=native -funroll-loops -std=legacy -w
-FFLAGS_DYN= -shared -fPIC
-CFLAGS= -fPIC -O3 -march=native -funroll-loops -std=c99
-CXXFLAGS= -std=c++11 -DSCTL_PROFILE=-1 -fPIC -O3 -march=native -funroll-loops
+# Base flags (shared)
+CFLAGS   ?= -fPIC -O3 -march=native -funroll-loops -std=c99
+CXXFLAGS ?= -std=c++11 -DSCTL_PROFILE=-1 -fPIC -O3 -march=native -funroll-loops
+FFLAGS   ?= -fPIC -O3 -march=native -funroll-loops -std=legacy -w
+FFLAGS_DYN ?= -shared -fPIC
+
+
+
+DO_DEBUG ?= 0
+
+# Compiler-specific debug helpers
+ifeq ($(DO_DEBUG),1)
+  CFLAGS   := -fPIC -g -O0 -march=native -funroll-loops -std=c99
+  CXXFLAGS := -std=c++11 -DSCTL_PROFILE=-1 -fPIC -g -O0 -march=native -funroll-loops
+  FFLAGS   := -fPIC -g -O0 -march=native -funroll-loops -std=legacy -w
+  FFLAGS_DYN := -shared -fPIC -g -O0
+
+  # Add traceback & runtime checks depending on FC
+  ifneq (,$(findstring ifx,$(FC))$(findstring ifort,$(FC)))
+    # Intel oneAPI ifx/ifort
+    FFLAGS += -traceback -check all -warn all -fpe0 -no-ipo -debug full -check arg_temp_created -init=snan,arrays
+  else ifneq (,$(findstring gfortran,$(FC)))
+    # GNU gfortran
+    FFLAGS += -fbacktrace -fcheck=all -ffpe-trap=invalid,zero,overflow -finit-real=snan
+  endif
+endif
 
 # set linking libraries
 CLIBS = -lgfortran -lm -ldl
 LIBS = -lm
 
-# extra flags for multithreaded: C/Fortran, MATLAB
-OMPFLAGS =-fopenmp
-OMPLIBS =-lgomp
+# Pick OpenMP flags/libs by compiler
+ifneq (,$(findstring ifx,$(FC))$(findstring ifort,$(FC)))
+  OMPFLAGS = -qopenmp
+  OMPLIBS  = -liomp5
+else
+  OMPFLAGS = -fopenmp
+  OMPLIBS  = -lgomp
+endif
+
 
 # Python Exetucable
 PYTHON=python
@@ -67,8 +94,8 @@ ifeq ($(FAST_KER),ON)
   LIBS += -lstdc++
   DYLIBS += -lstdc++
   CLIBS += -lstdc++
-  FFLAGS += -lstdc++
-  CFLAGS += -lstdc++
+  #FFLAGS += -lstdc++
+  #CFLAGS += -lstdc++
   OMP = ON
 endif
 
@@ -113,7 +140,8 @@ LAP = src/Laplace
 LOBJS = $(LAP)/lwtsexp_sep1.o $(LAP)/l3dterms.o $(LAP)/l3dtrans.o \
 	$(LAP)/laprouts3d.o $(LAP)/lfmm3d.o $(LAP)/lfmm3dwrap.o \
 	$(LAP)/lfmm3dwrap_legacy.o $(LAP)/lfmm3dwrap_vec.o $(LAP)/lwtsexp_sep2.o \
-	$(LAP)/lpwrouts.o $(LAP)/lfmm3d_ndiv.o
+	$(LAP)/lpwrouts.o $(LAP)/lfmm3d_ndiv.o 	
+#$(LAP)/lfmm3d_simple.o
 
 # Stokes objects
 STOK = src/Stokes
@@ -448,7 +476,7 @@ c/ex2_helm:
 	$(CC) $(CFLAGS) c/hfmm3d_vec_example.c $(COBJS) $(OBJS) -o c/int2-hfmm3d-vec-example $(CLIBS)
 
 clean: objclean
-	rm -f lib-static/*.a lib/*.so lib/*.dll lib/*.lib
+	rm -f lib-static/*.a lib/*.so lib/*.dll lib/*.lib *.mod
 	rm -f python/fmm3dpy*.so
 	rm -rf python/build
 	rm -rf python/dist
