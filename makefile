@@ -81,7 +81,6 @@ LIBNAME=libfmm3d
 DYNAMICLIB = $(LIBNAME).so
 STATICLIB = $(LIBNAME).a
 LIMPLIB = $(DYNAMICLIB)
-
 LLINKLIB = -lfmm3d
 
 
@@ -96,8 +95,8 @@ ifeq ($(FAST_KER),ON)
   CLIBS += -lstdc++
   #FFLAGS += -lstdc++
   #CFLAGS += -lstdc++
-  OMP = ON
 endif
+OMP = ON #always include omp 
 
 
 # multi-threaded libs & flags needed
