@@ -8,9 +8,9 @@
 
 
 # compiler, and linking from C, fortran
-CC=gcc
-CXX=g++
-FC?=gfortran
+CC=icx
+CXX=icx
+FC=ifx
 
 
 # Base flags (shared)
@@ -19,7 +19,10 @@ CXXFLAGS ?= -std=c++11 -DSCTL_PROFILE=-1 -fPIC -O3 -march=native -funroll-loops
 FFLAGS   ?= -fPIC -O3 -march=native -funroll-loops -std=legacy -w
 FFLAGS_DYN ?= -shared -fPIC
 
-
+ifeq ($(OS),Windows_NT)
+     SHELL := cmd.exe
+     .SHELLFLAGS := /c
+endif
 
 DO_DEBUG ?= 0
 
@@ -46,9 +49,34 @@ LIBS = -lm
 
 # Pick OpenMP flags/libs by compiler
 ifneq (,$(findstring ifx,$(FC))$(findstring ifort,$(FC)))
+  # Intel Fortran compiler
   OMPFLAGS = -qopenmp
   OMPLIBS  = -liomp5
+  
+  ifeq ($(OS),Windows_NT)
+  SHELL := cmd.exe
+  .SHELLFLAGS := /c
+  
+  # Compiler flags
+  FFLAGS += /libs:dll /threads
+  
+  # Define library directories
+  MSVC_LIB_X64 := C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Tools/MSVC/14.44.35207/lib/x64
+  WINSDK_UM_X64 := C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/um/x64
+  WINSDK_UCRT_X64 := C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0/ucrt/x64
+  
+  # Linker flags
+  LDFLAGS_WIN = /DLL /LIBPATH:"$(WINSDK_UM_X64)" /LIBPATH:"$(WINSDK_UCRT_X64)" /LIBPATH:"$(MSVC_LIB_X64)" /MACHINE:X64
+  
+  # Use FULL PATHS to x64 libraries
+  WIN_LIBS = "$(MSVC_LIB_X64)/msvcrt.lib" "$(WINSDK_UCRT_X64)/ucrt.lib" "$(MSVC_LIB_X64)/vcruntime.lib" "$(MSVC_LIB_X64)/oldnames.lib" "$(WINSDK_UM_X64)/kernel32.lib" "$(WINSDK_UM_X64)/user32.lib" "$(WINSDK_UM_X64)/advapi32.lib"
+  
+  DYLIBS = $(WIN_LIBS)
+  
+  
+endif
 else
+  # GNU gfortran
   OMPFLAGS = -fopenmp
   OMPLIBS  = -lgomp
 endif
@@ -81,6 +109,7 @@ LIBNAME=libfmm3d
 DYNAMICLIB = $(LIBNAME).so
 STATICLIB = $(LIBNAME).a
 LIMPLIB = $(DYNAMICLIB)
+
 LLINKLIB = -lfmm3d
 
 
@@ -95,8 +124,8 @@ ifeq ($(FAST_KER),ON)
   CLIBS += -lstdc++
   #FFLAGS += -lstdc++
   #CFLAGS += -lstdc++
+  OMP = ON
 endif
-OMP = ON #always include omp 
 
 
 # multi-threaded libs & flags needed
@@ -252,8 +281,9 @@ install: $(STATICLIB) $(DYNAMICLIB)
 $(STATICLIB): $(OBJS)
 	ar rcs $(STATICLIB) $(OBJS)
 	mv $(STATICLIB) lib-static/
+
 $(DYNAMICLIB): $(OBJS)
-	$(FC) $(FFLAGS_DYN) $(OBJS) -o $(DYNAMICLIB) $(DYLIBS)
+	$(FC) $(FFLAGS) $(OMPFLAGS) $(OBJS) -o $(DYNAMICLIB) /link $(LDFLAGS_WIN) $(DYLIBS) $(OMPLIBS)
 	mv $(DYNAMICLIB) lib/
 	[ ! -f $(LIMPLIB) ] || mv $(LIMPLIB) lib/
 
