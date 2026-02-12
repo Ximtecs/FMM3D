@@ -1,0 +1,14 @@
+# make.inc for Windows - Intel oneAPI
+CC=icx
+CXX=icpx
+FC=ifx
+
+AR=xilib
+ARFLAGS=/out:
+
+# We use /MD to link against the dynamic runtime
+OMPFLAGS = /Qopenmp
+OMPLIBS  = libiomp5md.lib
+FFLAGS   = /nologo /O3 /fpp /fPIC /std:legacy /w /libs:dll /threads /MD $(OMPFLAGS)
+CFLAGS   = /nologo /O3 /fPIC /std:c99 /MD
+CXXFLAGS = /nologo /O3 /fPIC /std:c++11 -DSCTL_PROFILE=-1 /MD
